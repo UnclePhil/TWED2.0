@@ -13,8 +13,13 @@
 ########################################################################################### 
 ##Version
 ##############################
+## 2.1  Esx config completion
+##        NTP service 
+##      Cluster HA & Drs
+##
 ## 2.0  Multiple vcenter documentation
 ##		split program in function
+##		Add DC  tiddler 
 ##
 ## 1.7  Add cpu ready time stats into vm (peeter)
 ##      Some bug corrected
@@ -121,6 +126,38 @@ function Get-VmSize($xvm)
 #########################################################
 ## End of used function
 
+
+###############################################################
+## DATACENTER Processing 
+## TODO --
+##    * vswitch configuration    
+#################################
+
+function Process-Datacenter ($filelocation, $vcserver) {
+ Write-Host "Parsing: Datacenter ======"
+ $toinject = ""
+ 
+ $dcs = Get-Datacenter
+ foreach ($dc in $dcs){
+	$fields = ""
+	$Tags="DC"
+	$Tiddlertitle = $dc
+	##DC location
+	$ct += "!Location" +$crlf
+	$ct += "*Vcenter : [[$vcserver]] " +$crlf
+	
+	##Write Tiddler
+	$toinject += TiddlerBuild $Tiddlertitle $Tags $fields $ct
+	}
+##inject tiddler in file
+Tiddlyadd $toinject $filelocation
+Clear-Variable $Tiddlertitle
+Clear-Variable $ct
+Clear-Variable $Tags
+Clear-Variable $Fields
+}
+
+
 function Process-Esx ($filelocation, $vcserver) {
 ###############################################################
 ## ESX Processing 
@@ -220,8 +257,13 @@ function Process-Esx ($filelocation, $vcserver) {
 	$ct += "*SubnetMask : "+$hvmot.SubnetMask +$crlf
 	$ct += "*Gateway : "+$hvmot.VMKernelGateway +$crlf
 	$ct += "*Device : " + $hvmot.Devicename +$crlf
-	
-	
+
+	##Service configuration
+	$ct += "!Services configuration" + $crlf
+	## NTP
+	$ct += "*NTP" + $crlf
+	$ct += "**Server : " + (Get-VMHostNtpServer -VMHost $vmhost) + $crlf
+	$ct += "**Running : " +(Get-VmHostService -VMHost $vmhost |Where-Object {$_.key-eq "ntpd"}).Running) + $crlf
 	
 	
 	#VSWITCH CONFIG
@@ -297,6 +339,7 @@ ForEach ($ds in $Datastores)
 	$ct+="Used Capacity (GB) : "+ $du + $crlf
 	$ct+="Free Capacity (GB) : "+ $dr + $crlf
 	$ct+= "!Location" +$crlf
+	$ct+= "*VCenter : "+ $vcserver +$crls
 	$ct+= "*Datacenter : " +$crlf
 
 
@@ -334,17 +377,25 @@ $clusters = Get-Cluster | Sort Name
 
 ForEach ($cluster in $clusters){
     Write-Host "  Processing $cluster"
+	$Tiddlertitle = $cluster
+    $Tags = "CLUSTER"
 	$ct=""
 	$TotalHostMemory=0
+    $dc = Get-Datacenter -Cluster $cluster
+
 	$ct+= "!Location" +$crlf
-	$ct+= "*Datacenter : " +$crlf
+	$ct+= "*VCenter : "+ $vcserver +$crlf
+	$ct+= "*Datacenter : "+ $dc +$crlf
+
+	$ct+= "!Configuration" +$crlf
+	$ct+= "*DRS :" $cluster.DRSEnabled +" Mode: "+ $cluster.DrsAutomationLevel +$crlf
+	$ct+= "*HA :" $cluster.HAEnabled +" Level: "+ $cluster.HAFailoverLevel +$crlf
+
 	$ct += "!Participant Host" +$crlf
 	$vmhosts = (Get-VMHost -Location $cluster | Sort Name) 
 	foreach ($vmhost in ($vmhosts|Get-View)){
 		$n=$vmhost.Name
 		$ct += "*[[$n]]"+$crlf
-		$ct += "**DRS enabled : "+$vmhost.Configuration.DRSConfig.enabled+$crlf
-    	$ct += "**HA enabled  : "+$vmhost.Configuration.DasConfig.enabled+$crlf
 		$TotalHostMemory += $vmhost.Hardware.MemorySize
 	}
 	
@@ -357,6 +408,7 @@ ForEach ($cluster in $clusters){
 	$AssignedRAM_GB = [math]::Round($TotalVMMemoryMB.Sum/1024,$digits)
 	$PercentageUsed = [math]::Round((($TotalVMMemoryMB.Sum/1024)/($TotalHostMemory/1GB))*100)		
 	$limit = (($NumHosts-1)/$NumHosts*100)
+
 	$ct+= "!Health Overview"+$crlf
 	$ct += "*$NumHosts host(s) running $NumVMs virtual machines"+$crlf 
 	$ct += "*Total memory resource = $TotalRAM_GB GB"+$crlf  
@@ -373,11 +425,12 @@ ForEach ($cluster in $clusters){
 	$fields += '|'+$limit
 	$fields += '|" '
 	##Write Tiddler
-	$toinject += TiddlerBuild $cluster "CLUSTER" $fields $ct 
+	$toinject += TiddlerBuild $Tiddlertitle $tags $fields $ct 
 }
 ##inject tiddler in file
 Tiddlyadd $toinject $filelocation
 
+Clear-Variable $Tiddlertitle
 Clear-Variable $ct
 Clear-Variable $Tags
 Clear-Variable $toinject
@@ -562,6 +615,8 @@ function Process-VCClose ($filelocation, $vcserver, $uc, $Starttime){
 ## Generation of Info Tiddler
 ###############################
 $Endtime=get-date -Format "yyyy/MM/dd-HH:mm:ss"	
+$ttitle = "Generation for "+$vcserver
+$tags = "infos"
 $fields = ""
 $ct = ""
 $ct += "!Generation for "+$vcserver+$crlf
@@ -574,26 +629,27 @@ $ct += "*End Time : "+$Endtime+$crlf
 $ct += "!Generator"+$crlf
 $ct += "*"+ $pkoversion+$crlf
 $ttitle = "Generation for "+$vcserver
-$toinject = TiddlerBuild $ttitle "Infos" $fields $ct
+$toinject = TiddlerBuild $ttitle $tags $fields $ct
 ##inject tiddler in file
 Tiddlyadd $toinject $filelocation
 
-
+Clear-Variable $ttitle
 Clear-Variable $ct
-Clear-Variable $Tags
+Clear-Variable $tags
 Clear-Variable $toinject
-}	
+}
+
 ########################################################################################################################################
 ########################################################################################################################################
 ########################################################################################################################################
-### START OF LOOP
+### START OF MAIN LOOP
 #########################################################
 ########################################################################################################################################
 ########################################################################################################################################
 
 
 ##fixed definition
-$pkoversion = "TiddlyEsxDoc 2.0 Unclephil-201104"
+$pkoversion = "TiddlyWikiEsxDoc 2.1 Unclephil-201110 http://tc.unclephil.net"
 $crlf="`n"
 $Starttime=get-date -Format "yyyy/MM/dd-HH:mm:ss"
 $Filetime=get-date -Format "yyyyMMdd-HHmmss"
@@ -605,7 +661,7 @@ $VmCpuReadylimit = 7
 ################################################################
 # VMware PROCESS STARTING  #
 ############################
- Write-Host "TiddlyEsxDoc"
+ Write-Host "TiddlyWikiEsxDoc"
  Write-Host "Version" $pkoversion
  Write-Host "============================================"
 
@@ -673,6 +729,7 @@ foreach ($vc in $vcs){
 		## real processing
 		Write-Host "Start Analyzing" $vc[0]
 		$st=get-date -Format "yyyy/MM/dd-HH:mm:ss"
+		Process-Datacenter $filelocation $vc[0]
 		Process-Esx $filelocation $vc[0]
 		Process-Datastore $filelocation $vc[0]
 		Process-Cluster $filelocation $vc[0]
