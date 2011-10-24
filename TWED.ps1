@@ -263,7 +263,7 @@ function Process-Esx ($filelocation, $vcserver) {
 	## NTP
 	$ct += "*NTP" + $crlf
 	$ct += "**Server : " + (Get-VMHostNtpServer -VMHost $vmhost) + $crlf
-	$ct += "**Running : " +(Get-VmHostService -VMHost $vmhost |Where-Object {$_.key-eq "ntpd"}).Running) + $crlf
+	$ct += "**Running : " +((Get-VmHostService -VMHost $vmhost |Where-Object {$_.key-eq "ntpd"}).Running) + $crlf
 	
 	
 	#VSWITCH CONFIG
@@ -388,8 +388,8 @@ ForEach ($cluster in $clusters){
 	$ct+= "*Datacenter : "+ $dc +$crlf
 
 	$ct+= "!Configuration" +$crlf
-	$ct+= "*DRS :" $cluster.DRSEnabled +" Mode: "+ $cluster.DrsAutomationLevel +$crlf
-	$ct+= "*HA :" $cluster.HAEnabled +" Level: "+ $cluster.HAFailoverLevel +$crlf
+	$ct+= "*DRS :" + $cluster.DRSEnabled +" Mode: "+ $cluster.DrsAutomationLevel +$crlf
+	$ct+= "*HA :" + $cluster.HAEnabled +" Level: "+ $cluster.HAFailoverLevel +$crlf
 
 	$ct += "!Participant Host" +$crlf
 	$vmhosts = (Get-VMHost -Location $cluster | Sort Name) 
@@ -722,6 +722,8 @@ Clear-Variable $Tags
 Clear-Variable $toinject
 
 ##loop through vcenter array
+Write-Host "Vcenter To visit"
+Write-Host $vcs
 foreach ($vc in $vcs){
 	$vs = Connect-VIServer -Server $vc[0] -port $vc[1] -User $vc[2] -Password $vc[3]
 	If ($vs.IsConnected -eq $true){	
