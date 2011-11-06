@@ -5,6 +5,7 @@
 #			healtcheck.sp1 Ivo Beerens  www.ivobeerens.nl    	
 #      		vcheck of Al : www.virtu-al.net
 #			A lot of good other scripts
+#           And the Powerclie Reference Book
 # Created by: Ph Koenig	 			
 # Date:		Sept 2009				
 # Version:   			
@@ -13,6 +14,8 @@
 ########################################################################################### 
 ##Version
 ##############################
+## 2.2  ESX Hba
+##
 ## 2.1  Esx config completion
 ##        NTP service 
 ##      Cluster HA & Drs
@@ -77,7 +80,6 @@ $rpl += "</div>"+"`n"
 
 return $rpl
 }
-
 
 
 function Get-VmSize($xvm)
@@ -191,7 +193,8 @@ function Process-Esx ($filelocation, $vcserver) {
 	$ct += "*Nbr Hba     : "+$vmhost.Summary.hardware.NumHbas +$crlf
 	
 	
-	#NETWORK CONFIG
+	## NETWORK CONFIG
+	## 20111106 Add Duplex settings
 	$ct +="!!Nic Cards" + $crlf
 	$networkSystem = Get-view $vmhost.ConfigManager.NetworkSystem
 	foreach($pnic in $networkSystem.NetworkConfig.Pnic){
@@ -224,6 +227,7 @@ function Process-Esx ($filelocation, $vcserver) {
 			}
 			$ct += "!!!" + $NetworkInfo.PNic +$crlf
 			$ct += "*Speed : " + $NetworkInfo.Speed +$crlf
+			$ct += "*FullDuplex : " + $NetworkInfo.FullDuplex +$crlf
 			$ct += "*MAC   : " + $NetworkInfo.MAC +$crlf
 			$ct += "*Connected switch " +$crlf
 			$ct += "**Switch name   : " + $NetworkInfo.DeviceId +$crlf
@@ -232,11 +236,25 @@ function Process-Esx ($filelocation, $vcserver) {
 		}
 	}
 
-	#ESX CONFIG
+    ## HBA CONFIG
+	## V2.2 @20111106
+	## inspired from Powercli Reference book
+	$ct +="!!HBA" + $crlf
+	$ct +="|!Pci|!Device|!Type|!Model|!Status|!Wwpn|"+ $crlf
+	foreach ($hba in @($vmhost|Get-VMHostHba){
+		$ct +="|"+$hba.Pci+"|"+$hba.Device+"|"+$hba.Type+"|"+$hba.Model+"|"+$hba.Status+"|"+"{0:x}" -f $hba.PortWorldWideName+"|"+ $crlf
+	}
+
+
+	##ESX CONFIG
+	## V2.2 console memory
 	$ct += "!ESX configuration" + $crlf
 	$ct += "*Esx version     : "+$vmhost.Config.Product.Version +$crlf
 	$ct += "*Esx Build       : "+$vmhost.Config.Product.Build +$crlf
 	$ct += "*Esx Fullname    : "+$vmhost.Config.Product.Fullname +$crlf
+	$ct += "*Console Memory  : "+$vmhost.Config.ConsoleReservation.ServiceConsoleReserved / 1MB +$crlf
+	$ct += "*Reserved Memory : "+$vmhost.ConfigManager.MemoryManager.ConsoleReservationInfo.ServiceConsoleReserved / 1Mb +$crlf
+
 
 	## Esx console config (virtu-al)
 	$esxnet =Get-VMHostNetwork -VMHost $ESXHost
@@ -268,7 +286,7 @@ function Process-Esx ($filelocation, $vcserver) {
 	
 	#VSWITCH CONFIG
 	$ct += "!Vswitch configuration" + $crlf
-	## this part must be totally rewrited so i remove .... maybe in V1.8
+	## this part must be totally rewrited so i remove .... maybe in Vxxx
 	
 	
 	##ESX placement
@@ -309,6 +327,7 @@ function Process-Datastore ($filelocation, $vcserver) {
 ###########################################################################################
 ## DATASTORE
 ## TODO ---
+## V2.2 Add datastore Type
 ###########################
 Write-Host "Parsing: DataStore ======"
 $dssum=""
@@ -335,11 +354,12 @@ ForEach ($ds in $Datastores)
 	
 	
 	$ct+="!" + $Ds.Name + $crlf
+	$ct+="Type : "+ $Ds.type + $crlf
 	$ct+="Total Capacity (GB) : "+ $dt + $crlf
 	$ct+="Used Capacity (GB) : "+ $du + $crlf
 	$ct+="Free Capacity (GB) : "+ $dr + $crlf
 	$ct+= "!Location" +$crlf
-	$ct+= "*VCenter : "+ $vcserver +$crls
+	$ct+= "*VCenter : "+ $vcserver +$crlf
 	$ct+= "*Datacenter : " +$crlf
 
 
@@ -388,8 +408,8 @@ ForEach ($cluster in $clusters){
 	$ct+= "*Datacenter : "+ $dc +$crlf
 
 	$ct+= "!Configuration" +$crlf
-	$ct+= "*DRS :" + $cluster.DRSEnabled +" Mode: "+ $cluster.DrsAutomationLevel +$crlf
-	$ct+= "*HA :" + $cluster.HAEnabled +" Level: "+ $cluster.HAFailoverLevel +$crlf
+	$ct+= "*DRS :" + $cluster.DRSEnabled +"   Mode: "+ $cluster.DrsAutomationLevel +$crlf
+	$ct+= "*HA :" + $cluster.HAEnabled +"   Level: "+ $cluster.HAFailoverLevel +$crlf
 
 	$ct += "!Participant Host" +$crlf
 	$vmhosts = (Get-VMHost -Location $cluster | Sort Name) 
@@ -649,7 +669,7 @@ Clear-Variable $toinject
 
 
 ##fixed definition
-$pkoversion = "TiddlyWikiEsxDoc 2.1 Unclephil-201110 http://tc.unclephil.net"
+$pkoversion = "TiddlyWikiEsxDoc 2.2 Unclephil-201111 http://tc.unclephil.net"
 $crlf="`n"
 $Starttime=get-date -Format "yyyy/MM/dd-HH:mm:ss"
 $Filetime=get-date -Format "yyyyMMdd-HHmmss"
